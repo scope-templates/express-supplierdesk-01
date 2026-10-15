@@ -1,13 +1,9 @@
+// First, so every module below already sees the settings in .env when it is evaluated.
+import "./env.js";
 import { mkdirSync, readFileSync } from "node:fs";
 import { createApp } from "./app.js";
 import { chatCompletionsModel, modelSettingsFrom } from "./assistant/model.js";
 import { loadSeedIfEmpty, openDatabase, readSeed } from "./db.js";
-
-try {
-  process.loadEnvFile(".env");
-} catch (err) {
-  if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-}
 
 const sessionSecret = process.env.SESSION_SECRET?.trim();
 if (!sessionSecret || sessionSecret.startsWith("replace-with") || sessionSecret.length < 16) {

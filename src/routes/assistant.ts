@@ -9,7 +9,6 @@ import { idParam, text } from "../validate.js";
 import type { AppContext } from "../app.js";
 
 export const questionBody = z.object({ question: text(2000) });
-const QUESTION_DEADLINE_MS = 120_000;
 export const QUESTIONS_PER_HOUR = 30;
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -45,9 +44,8 @@ export async function answerQuestion(
   res.on("close", () => {
     if (!res.writableFinished) gone.abort();
   });
-  const signal = AbortSignal.any([gone.signal, AbortSignal.timeout(QUESTION_DEADLINE_MS)]);
   try {
-    return await askAboutSupplier(model, { db, supplierId: supplier.id, actor, now }, question, signal);
+    return await askAboutSupplier(model, { db, supplierId: supplier.id, actor, now }, question, gone.signal);
   } catch (err) {
     if (err instanceof ModelCallFailed) throw new Problem(502, "model_call_failed", err.message);
     throw err;

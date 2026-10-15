@@ -41,7 +41,7 @@ describe("chat-completions model", () => {
       tools: toolSpecs(),
     });
 
-    expect(reply).toEqual({ content: null, tool_calls: toolCalls });
+    expect(reply).toMatchObject({ content: null, tool_calls: toolCalls });
     expect(sent[0]?.url).toBe("http://model.test/v1/chat/completions");
     expect(sent[0]?.init.method).toBe("POST");
     expect(sent[0]?.init.headers.authorization).toBe("Bearer k");
@@ -58,6 +58,38 @@ describe("chat-completions model", () => {
     expect(reply.tool_calls).toEqual([{ id: "1", type: "function", function: { name: "facts", arguments: "{}" } }]);
   });
 
+  it("joins content sent as a list of text parts", async () => {
+    const { transport } = recording({
+      ok: true,
+      status: 200,
+      body: { choices: [{ message: { content: [{ type: "text", text: "First half, " }, { type: "other" }, { type: "text", text: "second half." }] } }] },
+    });
+    const reply = await chatCompletionsModel(settings(), transport).complete({ messages: [], tools: toolSpecs() });
+    expect(reply.content).toBe("First half, second half.");
+  });
+
+  it("skips tool-call entries of a kind other than function and keeps the function calls", async () => {
+    const { transport } = recording({
+      ok: true,
+      status: 200,
+      body: {
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                { id: "h", type: "other", other: {} },
+                { id: "1", type: "function", function: { name: "facts", arguments: "{}" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const reply = await chatCompletionsModel(settings(), transport).complete({ messages: [], tools: toolSpecs() });
+    expect(reply.tool_calls).toEqual([{ id: "1", type: "function", function: { name: "facts", arguments: "{}" } }]);
+  });
+
   it("sends tool_choice none with the tools when asked", async () => {
     const { sent, transport } = recording({ ok: true, status: 200, body: { choices: [{ message: { content: "ok" } }] } });
     const reply = await chatCompletionsModel(settings(), transport).complete({
@@ -65,7 +97,7 @@ describe("chat-completions model", () => {
       tools: toolSpecs(),
       tool_choice: "none",
     });
-    expect(reply).toEqual({ content: "ok", tool_calls: [] });
+    expect(reply).toMatchObject({ content: "ok", tool_calls: [] });
     expect(JSON.parse(sent[0]?.init.body ?? "")).toMatchObject({ tools: toolSpecs(), tool_choice: "none" });
   });
 

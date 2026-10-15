@@ -41,18 +41,30 @@ export interface ModelSettings {
 export class ModelCallFailed extends Error {}
 
 const replyMessage = z.object({
-  content: z.string().nullable().optional(),
+  content: z
+    .union([z.string(), z.array(z.object({ type: z.string(), text: z.unknown().optional() }))])
+    .nullable()
+    .optional(),
   tool_calls: z
     .array(
-      z.object({
-        id: z.string(),
-        type: z.literal("function").optional(),
-        function: z.object({ name: z.string(), arguments: z.string() }),
-      }),
+      z.union([
+        z.object({
+          id: z.string(),
+          type: z.literal("function").optional(),
+          function: z.object({ name: z.string(), arguments: z.string() }),
+        }),
+        z.object({ type: z.string().refine((type) => type !== "function") }),
+      ]),
     )
     .nullable()
     .optional(),
 });
+
+function textOf(content: z.infer<typeof replyMessage>["content"]): string | null {
+  if (!Array.isArray(content)) return content ?? null;
+  const texts = content.flatMap((part) => (part.type === "text" && typeof part.text === "string" ? [part.text] : []));
+  return texts.length > 0 ? texts.join("") : null;
+}
 
 const MODEL_TIMEOUT_MS = 60_000;
 const LOGGED_ERROR_CHARS = 500;
@@ -103,8 +115,10 @@ export function chatCompletionsModel(settings: ModelSettings, transport: Transpo
       }
       const message = replyMessage.safeParse((body as { choices?: { message?: unknown }[] } | null)?.choices?.[0]?.message);
       if (!message.success) throw new ModelCallFailed("The model endpoint answered without a readable message.");
-      const toolCalls = (message.data.tool_calls ?? []).map((call) => ({ id: call.id, type: "function" as const, function: call.function }));
-      return { content: message.data.content ?? null, tool_calls: toolCalls };
+      const toolCalls = (message.data.tool_calls ?? []).flatMap((call) =>
+        "function" in call ? [{ id: call.id, type: "function" as const, function: call.function }] : [],
+      );
+      return { content: textOf(message.data.content), tool_calls: toolCalls };
     },
   };
 }
